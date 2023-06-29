@@ -9,4 +9,4 @@ metadata:
     app.kubernetes.io/created-by: podinfo
   name: myappresource-sample
 spec:
-  # TODO(user): Add fields here
+  replicaCount: 2

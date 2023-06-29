@@ -28,8 +28,11 @@ type MyAppResourceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of MyAppResource. Edit myappresource_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// ReplicaCount controls the number of Pods allowed for the Podinfo Deployment
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=3
+	// +kubebuilder:validation:ExclusiveMaximum=false
+	ReplicaCount int32 `json:"replicaCount,omitempty"`
 }
 
 // MyAppResourceStatus defines the observed state of MyAppResource
