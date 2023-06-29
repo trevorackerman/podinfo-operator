@@ -17,11 +17,17 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+type Resources struct {
+	MemoryLimit resource.Quantity `json:"memoryLimit,omitempty"`
+	CpuRequest  resource.Quantity `json:"cpuRequest,omitempty"`
+}
 
 // MyAppResourceSpec defines the desired state of MyAppResource
 type MyAppResourceSpec struct {
@@ -32,7 +38,8 @@ type MyAppResourceSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=3
 	// +kubebuilder:validation:ExclusiveMaximum=false
-	ReplicaCount int32 `json:"replicaCount,omitempty"`
+	ReplicaCount int32     `json:"replicaCount,omitempty"`
+	Resources    Resources `json:"resources,omitempty"`
 }
 
 // MyAppResourceStatus defines the observed state of MyAppResource

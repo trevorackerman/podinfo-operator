@@ -123,6 +123,13 @@ You can check if you've correctly pushed to minikube via
 minikube image ls
 ```
 
+### Running tests with minikube
+
+```
+export KUBEBUILDER_ASSETS=$(pwd)/bin/k8s/1.26.0-linux-amd64
+```
+
+
 ## Creating MyAppResource custom resources
 
 You may use the sample file from config/sample/blah.yaml

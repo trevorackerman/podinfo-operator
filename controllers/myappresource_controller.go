@@ -281,6 +281,14 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(myAppResource *myv1
 							},
 						},
 						Command: []string{"./podinfo", "--port=9898", "--port-metrics=9797", "--grpc-port=9999", "--grpc-service-name=podinfo", "--level=info", "--random-delay=false", "--random-error=false"},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU: myAppResource.Spec.Resources.CpuRequest,
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceMemory: myAppResource.Spec.Resources.MemoryLimit,
+							},
+						},
 					}},
 				},
 			},

@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -25,6 +26,9 @@ var _ = Describe("MyAppResource controller", func() {
 
 		typeNamespaceName := types.NamespacedName{Name: MyAppResourceName, Namespace: "default"}
 
+		// TODO - negative testing of replica count
+		// TODO - test of scaling replica count
+
 		It("Successfully Reconciles", func() {
 			By("Creating the custom resource for the Kind MyAppResource")
 			myAppResource := &myv1alpha1.MyAppResource{}
@@ -39,6 +43,10 @@ var _ = Describe("MyAppResource controller", func() {
 					},
 					Spec: myv1alpha1.MyAppResourceSpec{
 						ReplicaCount: 3,
+						Resources: myv1alpha1.Resources{
+							MemoryLimit: resource.MustParse("64Mi"),
+							CpuRequest:  resource.MustParse("100m"),
+						},
 					},
 				}
 
@@ -72,6 +80,9 @@ var _ = Describe("MyAppResource controller", func() {
 				}
 
 				Expect(*found.Spec.Replicas).To(Equal(int32(3)))
+				Expect(found.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal("100m"))
+				Expect(found.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String()).To(Equal("64Mi"))
+				// Expect(found.Spec.Template.Spec.Containers[0].Image).To(Equal("idunno:v1"))
 				return nil
 			}, time.Minute, time.Second).Should(Succeed())
 
