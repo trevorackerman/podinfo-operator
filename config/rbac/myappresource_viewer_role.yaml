@@ -1,0 +1,27 @@
+# permissions for end users to view myappresources.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: myappresource-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: podinfo
+    app.kubernetes.io/part-of: podinfo
+    app.kubernetes.io/managed-by: kustomize
+  name: myappresource-viewer-role
+rules:
+- apiGroups:
+  - my.api.group
+  resources:
+  - myappresources
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - my.api.group
+  resources:
+  - myappresources/status
+  verbs:
+  - get
