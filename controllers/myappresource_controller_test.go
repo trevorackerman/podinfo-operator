@@ -3,20 +3,20 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	myv1alpha1 "github.com/trevorackerman/podinfo-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	myv1alpha1 "github.com/trevorackerman/podinfo-operator/api/v1alpha1"
 )
 
 var _ = Describe("MyAppResource controller", func() {
@@ -25,7 +25,7 @@ var _ = Describe("MyAppResource controller", func() {
 
 		ctx := context.Background()
 
-		typeNamespaceName := types.NamespacedName{Name: fmt.Sprintf("%s-podinfo", MyAppResourceName), Namespace: "default"}
+		typeNamespaceName := types.NamespacedName{Name: MyAppResourceName, Namespace: "default"}
 
 		// TODO - negative testing of replica count
 		// TODO - test of scaling replica count
@@ -86,7 +86,8 @@ var _ = Describe("MyAppResource controller", func() {
 			By("Checking the Deployment was successfully created")
 			Eventually(func() error {
 				found := &appsv1.Deployment{}
-				err := k8sClient.Get(ctx, typeNamespaceName, found)
+				podinfoName := fmt.Sprintf("%s-podinfo", MyAppResourceName)
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: podinfoName, Namespace: "default"}, found)
 				if err != nil {
 					return err
 				}
@@ -100,6 +101,18 @@ var _ = Describe("MyAppResource controller", func() {
 					{Name: "PODINFO_UI_COLOR", Value: "#dedbed"},
 					{Name: "PODINFO_UI_MESSAGE", Value: "Hello World!"},
 				}))
+
+				deployments := appsv1.DeploymentList{}
+				err = k8sClient.List(ctx, &deployments, &client.ListOptions{Namespace: "default"})
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "Can't list deployments", err)
+				}
+
+				fmt.Println("deployments", len(deployments.Items))
+				for i := 0; i < len(deployments.Items); i++ {
+					d := deployments.Items[i]
+					fmt.Printf("Found deployment '%s' in namepsace default\n", d.Name)
+				}
 
 				foundRedis := &appsv1.Deployment{}
 				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: fmt.Sprintf("%s-redis", MyAppResourceName)}, foundRedis)

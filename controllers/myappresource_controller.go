@@ -209,55 +209,55 @@ func (r *MyAppResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, err
 		}
 
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
 	} else if err != nil {
 		log.Error(err, "Failed to get Deployment")
 		// Let's return the error for the reconciliation be re-trigged again
 		return ctrl.Result{}, err
 	}
 
-	redisName := fmt.Sprintf("%s-redis", myAppResource.Name)
-	err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, found)
+	if myAppResource.Spec.Redis.Enabled {
+		redisName := fmt.Sprintf("%s-redis", myAppResource.Name)
+		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, found)
 
-	if err != nil && apierrors.IsNotFound(err) {
-		// Define a new deployment
-		dep, err := r.redisDeployment(redisName, myAppResource)
-		if err != nil {
-			log.Error(err, "Failed to define new Redis Deployment resource for MyAppResource")
+		if err != nil && apierrors.IsNotFound(err) {
+			// Define a new deployment
+			dep, err := r.redisDeployment(redisName, myAppResource)
+			if err != nil {
+				log.Error(err, "Failed to define new Redis Deployment resource for MyAppResource")
 
-			// The following implementation will update the status
-			meta.SetStatusCondition(
-				&myAppResource.Status.Conditions,
-				metav1.Condition{
-					Type:    typeAvailableMyAppResource,
-					Status:  metav1.ConditionFalse,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", myAppResource.Name, err),
-				},
-			)
+				// The following implementation will update the status
+				meta.SetStatusCondition(
+					&myAppResource.Status.Conditions,
+					metav1.Condition{
+						Type:    typeAvailableMyAppResource,
+						Status:  metav1.ConditionFalse,
+						Reason:  "Reconciling",
+						Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", myAppResource.Name, err),
+					},
+				)
 
-			if err := r.Status().Update(ctx, myAppResource); err != nil {
-				log.Error(err, "Failed to update MyAppResource status")
+				if err := r.Status().Update(ctx, myAppResource); err != nil {
+					log.Error(err, "Failed to update MyAppResource status")
+					return ctrl.Result{}, err
+				}
+
 				return ctrl.Result{}, err
 			}
 
+			log.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+			if err = r.Create(ctx, dep); err != nil {
+				log.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+				return ctrl.Result{}, err
+			}
+
+		} else if err != nil {
+			log.Error(err, "Failed to get Deployment")
+			// Let's return the error for the reconciliation be re-trigged again
 			return ctrl.Result{}, err
 		}
-
-		log.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
-		if err = r.Create(ctx, dep); err != nil {
-			log.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	} else if err != nil {
-		log.Error(err, "Failed to get Deployment")
-		// Let's return the error for the reconciliation be re-trigged again
-		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: time.Minute}, nil
 }
 
 func (r *MyAppResourceReconciler) doFinalizerOperationsForMyAppResource(cr *myv1alpha1.MyAppResource) {
@@ -455,6 +455,12 @@ func (r *MyAppResourceReconciler) redisDeployment(redisName string, myAppResourc
 				},
 			},
 		},
+	}
+
+	// Set the ownerRef for the Deployment
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/
+	if err := ctrl.SetControllerReference(myAppResource, dep, r.Scheme); err != nil {
+		return nil, err
 	}
 
 	return dep, nil
