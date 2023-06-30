@@ -42,6 +42,11 @@ spec:
                   tag:
                     type: string
                 type: object
+              redis:omitempty:
+                properties:
+                  enabled:
+                    type: boolean
+                type: object
               replicaCount:
                 description: ReplicaCount controls the number of Pods allowed for
                   the Podinfo Deployment
@@ -71,6 +76,8 @@ spec:
                   message:
                     type: string
                 type: object
+            required:
+            - redis:omitempty
             type: object
           status:
             description: MyAppResourceStatus defines the observed state of MyAppResource

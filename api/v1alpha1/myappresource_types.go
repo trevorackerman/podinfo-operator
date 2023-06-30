@@ -39,6 +39,10 @@ type UI struct {
 	Message string `json:"message,omitempty"`
 }
 
+type Redis struct {
+	Enabled bool `json:"enabled,omitempty"`
+}
+
 // MyAppResourceSpec defines the desired state of MyAppResource
 type MyAppResourceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -52,6 +56,7 @@ type MyAppResourceSpec struct {
 	Resources    Resources `json:"resources,omitempty"`
 	Image        Image     `json:"image,omitempty"`
 	UI           UI        `json:"ui,omitempty"`
+	Redis        Redis     `json:"redis:omitempty"`
 }
 
 // MyAppResourceStatus defines the observed state of MyAppResource

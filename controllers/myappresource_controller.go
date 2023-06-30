@@ -25,9 +25,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -170,15 +172,58 @@ func (r *MyAppResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
+	// TODO - refactor duplicated code for spinning up deployment...
 	// Check if the deployment already exists, if not create a new one
+	podinfoName := fmt.Sprintf("%s-podinfo", myAppResource.Name)
 	found := &appsv1.Deployment{}
-	err = r.Get(ctx, types.NamespacedName{Name: myAppResource.Name, Namespace: myAppResource.Namespace}, found)
+	err = r.Get(ctx, types.NamespacedName{Name: podinfoName, Namespace: myAppResource.Namespace}, found)
 
 	if err != nil && apierrors.IsNotFound(err) {
 		// Define a new deployment
-		dep, err := r.deploymentForMyAppResource(myAppResource)
+		dep, err := r.deploymentForMyAppResource(podinfoName, myAppResource)
 		if err != nil {
 			log.Error(err, "Failed to define new Deployment resource for MyAppResource")
+
+			// The following implementation will update the status
+			meta.SetStatusCondition(
+				&myAppResource.Status.Conditions,
+				metav1.Condition{
+					Type:    typeAvailableMyAppResource,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Reconciling",
+					Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", myAppResource.Name, err),
+				},
+			)
+
+			if err := r.Status().Update(ctx, myAppResource); err != nil {
+				log.Error(err, "Failed to update MyAppResource status")
+				return ctrl.Result{}, err
+			}
+
+			return ctrl.Result{}, err
+		}
+
+		log.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+		if err = r.Create(ctx, dep); err != nil {
+			log.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	} else if err != nil {
+		log.Error(err, "Failed to get Deployment")
+		// Let's return the error for the reconciliation be re-trigged again
+		return ctrl.Result{}, err
+	}
+
+	redisName := fmt.Sprintf("%s-redis", myAppResource.Name)
+	err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, found)
+
+	if err != nil && apierrors.IsNotFound(err) {
+		// Define a new deployment
+		dep, err := r.redisDeployment(redisName, myAppResource)
+		if err != nil {
+			log.Error(err, "Failed to define new Redis Deployment resource for MyAppResource")
 
 			// The following implementation will update the status
 			meta.SetStatusCondition(
@@ -220,8 +265,8 @@ func (r *MyAppResourceReconciler) doFinalizerOperationsForMyAppResource(cr *myv1
 }
 
 // deploymentForMyAppResource returns a MyAppResource Deployment object
-func (r *MyAppResourceReconciler) deploymentForMyAppResource(myAppResource *myv1alpha1.MyAppResource) (*appsv1.Deployment, error) {
-	ls := labelsForMyAppResource(myAppResource.Name, myAppResource.Spec.Image.Tag)
+func (r *MyAppResourceReconciler) deploymentForMyAppResource(podinfoName string, myAppResource *myv1alpha1.MyAppResource) (*appsv1.Deployment, error) {
+	ls := labelsForMyAppResource(podinfoName)
 	replicas := myAppResource.Spec.ReplicaCount
 
 	// Get the Operand image
@@ -232,7 +277,7 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(myAppResource *myv1
 
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      myAppResource.Name,
+			Name:      podinfoName,
 			Namespace: myAppResource.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -307,12 +352,119 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(myAppResource *myv1
 	return dep, nil
 }
 
+func (r *MyAppResourceReconciler) redisDeployment(redisName string, myAppResource *myv1alpha1.MyAppResource) (*appsv1.Deployment, error) {
+	ls := labelsForMyAppResource(myAppResource.Name)
+
+	// Shamelessly copied from https://github.com/stefanprodan/podinfo/blob/dd3869b1a177432b60ea1e3ba99c10fc9db850fa/deploy/bases/cache/deployment.yaml
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      redisName,
+			Namespace: myAppResource.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: ls,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: ls,
+				},
+				Spec: corev1.PodSpec{
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: &[]bool{true}[0],
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
+					Containers: []corev1.Container{{
+						Image:           "redis:7.0.7",
+						Name:            "redis",
+						ImagePullPolicy: corev1.PullIfNotPresent,
+						Command:         []string{"redis-server", "/redis-master/redis.conf"},
+						Ports: []corev1.ContainerPort{
+							{
+								ContainerPort: 6379,
+								Name:          "redis",
+							},
+						},
+						LivenessProbe: &corev1.Probe{
+							InitialDelaySeconds: 5,
+							TimeoutSeconds:      5,
+							ProbeHandler: corev1.ProbeHandler{
+								TCPSocket: &corev1.TCPSocketAction{
+									Port: intstr.IntOrString{
+										IntVal: 6379,
+									},
+								},
+							},
+						},
+						ReadinessProbe: &corev1.Probe{
+							InitialDelaySeconds: 5,
+							TimeoutSeconds:      5,
+							ProbeHandler: corev1.ProbeHandler{
+								Exec: &corev1.ExecAction{
+									Command: []string{"redis-cli", "ping"},
+								},
+							},
+						},
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("100m"),
+								corev1.ResourceMemory: resource.MustParse("32Mi"),
+							},
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("1000m"),
+								corev1.ResourceMemory: resource.MustParse("128Mi"),
+							},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							corev1.VolumeMount{
+								MountPath: "/var/lib/redis",
+								Name:      "data",
+							},
+							corev1.VolumeMount{
+								MountPath: "/redis-master",
+								Name:      "config",
+							},
+						},
+					}},
+					Volumes: []corev1.Volume{
+						corev1.Volume{
+							Name: "data",
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
+						corev1.Volume{
+							Name: "config",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "redis-config",
+									},
+									Items: []corev1.KeyToPath{
+										corev1.KeyToPath{
+											Key:  "redis.conf",
+											Path: "redis.conf",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return dep, nil
+}
+
 // labelsForMyAppResource returns the labels for selecting the resources
 // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
-func labelsForMyAppResource(name string, imageTag string) map[string]string {
+func labelsForMyAppResource(name string) map[string]string {
 	return map[string]string{"app.kubernetes.io/name": "MyAppResource",
 		"app.kubernetes.io/instance":   name,
-		"app.kubernetes.io/version":    imageTag,
 		"app.kubernetes.io/part-of":    "podinfo-operator",
 		"app.kubernetes.io/created-by": "controller-manager",
 	}

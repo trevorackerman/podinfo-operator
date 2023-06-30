@@ -25,7 +25,7 @@ var _ = Describe("MyAppResource controller", func() {
 
 		ctx := context.Background()
 
-		typeNamespaceName := types.NamespacedName{Name: MyAppResourceName, Namespace: "default"}
+		typeNamespaceName := types.NamespacedName{Name: fmt.Sprintf("%s-podinfo", MyAppResourceName), Namespace: "default"}
 
 		// TODO - negative testing of replica count
 		// TODO - test of scaling replica count
@@ -55,6 +55,9 @@ var _ = Describe("MyAppResource controller", func() {
 						UI: myv1alpha1.UI{
 							Color:   "#dedbed",
 							Message: "Hello World!",
+						},
+						Redis: myv1alpha1.Redis{
+							Enabled: true,
 						},
 					},
 				}
@@ -97,6 +100,15 @@ var _ = Describe("MyAppResource controller", func() {
 					{Name: "PODINFO_UI_COLOR", Value: "#dedbed"},
 					{Name: "PODINFO_UI_MESSAGE", Value: "Hello World!"},
 				}))
+
+				foundRedis := &appsv1.Deployment{}
+				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: fmt.Sprintf("%s-redis", MyAppResourceName)}, foundRedis)
+				if err != nil {
+					return err
+				}
+
+				redisContainer := foundRedis.Spec.Template.Spec.Containers[0]
+				Expect(redisContainer.Image).To(Equal("redis:7.0.7"))
 
 				return nil
 			}, time.Minute, time.Second).Should(Succeed())
