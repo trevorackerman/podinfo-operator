@@ -47,6 +47,10 @@ var _ = Describe("MyAppResource controller", func() {
 							MemoryLimit: resource.MustParse("64Mi"),
 							CpuRequest:  resource.MustParse("100m"),
 						},
+						Image: myv1alpha1.Image{
+							Repository: "nginx",
+							Tag:        "1.14.2",
+						},
 					},
 				}
 
@@ -82,7 +86,7 @@ var _ = Describe("MyAppResource controller", func() {
 				Expect(*found.Spec.Replicas).To(Equal(int32(3)))
 				Expect(found.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal("100m"))
 				Expect(found.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String()).To(Equal("64Mi"))
-				// Expect(found.Spec.Template.Spec.Containers[0].Image).To(Equal("idunno:v1"))
+				Expect(found.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.14.2"))
 				return nil
 			}, time.Minute, time.Second).Should(Succeed())
 

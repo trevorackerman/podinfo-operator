@@ -29,6 +29,11 @@ type Resources struct {
 	CpuRequest  resource.Quantity `json:"cpuRequest,omitempty"`
 }
 
+type Image struct {
+	Repository string `json:"repository,omitempty"`
+	Tag        string `json:"tag,omitempty"`
+}
+
 // MyAppResourceSpec defines the desired state of MyAppResource
 type MyAppResourceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -40,6 +45,7 @@ type MyAppResourceSpec struct {
 	// +kubebuilder:validation:ExclusiveMaximum=false
 	ReplicaCount int32     `json:"replicaCount,omitempty"`
 	Resources    Resources `json:"resources,omitempty"`
+	Image        Image     `json:"image,omitempty"`
 }
 
 // MyAppResourceStatus defines the observed state of MyAppResource

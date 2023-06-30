@@ -35,6 +35,13 @@ spec:
           spec:
             description: MyAppResourceSpec defines the desired state of MyAppResource
             properties:
+              image:
+                properties:
+                  repository:
+                    type: string
+                  tag:
+                    type: string
+                type: object
               replicaCount:
                 description: ReplicaCount controls the number of Pods allowed for
                   the Podinfo Deployment

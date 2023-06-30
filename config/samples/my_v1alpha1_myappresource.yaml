@@ -13,3 +13,6 @@ spec:
   resources:
     memoryLimit: 64Mi
     cpuRequest: 100m
+  image:
+    repository: ghcr.io/stefanprodan/podinfo
+    tag: 6.3.6

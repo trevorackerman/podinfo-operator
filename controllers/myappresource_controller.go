@@ -19,7 +19,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -222,11 +221,11 @@ func (r *MyAppResourceReconciler) doFinalizerOperationsForMyAppResource(cr *myv1
 
 // deploymentForMyAppResource returns a MyAppResource Deployment object
 func (r *MyAppResourceReconciler) deploymentForMyAppResource(myAppResource *myv1alpha1.MyAppResource) (*appsv1.Deployment, error) {
-	ls := labelsForMyAppResource(myAppResource.Name)
+	ls := labelsForMyAppResource(myAppResource.Name, myAppResource.Spec.Image.Tag)
 	replicas := myAppResource.Spec.ReplicaCount
 
 	// Get the Operand image
-	image, err := imageForMyAppResource()
+	image, err := imageForMyAppResource(myAppResource)
 	if err != nil {
 		return nil, err
 	}
@@ -305,12 +304,7 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(myAppResource *myv1
 
 // labelsForMyAppResource returns the labels for selecting the resources
 // More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/
-func labelsForMyAppResource(name string) map[string]string {
-	var imageTag string
-	image, err := imageForMyAppResource()
-	if err == nil {
-		imageTag = strings.Split(image, ":")[1]
-	}
+func labelsForMyAppResource(name string, imageTag string) map[string]string {
 	return map[string]string{"app.kubernetes.io/name": "MyAppResource",
 		"app.kubernetes.io/instance":   name,
 		"app.kubernetes.io/version":    imageTag,
@@ -319,10 +313,8 @@ func labelsForMyAppResource(name string) map[string]string {
 	}
 }
 
-// imageForMyAppResource gets the Operand image which is managed by this controller
-// from the MEMCACHED_IMAGE environment variable defined in the config/manager/manager.yaml
-func imageForMyAppResource() (string, error) {
-	return "ghcr.io/stefanprodan/podinfo:latest", nil
+func imageForMyAppResource(myAppResource *myv1alpha1.MyAppResource) (string, error) {
+	return fmt.Sprintf("%s:%s", myAppResource.Spec.Image.Repository, myAppResource.Spec.Image.Tag), nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
