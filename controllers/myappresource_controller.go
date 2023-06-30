@@ -418,24 +418,24 @@ func (r *MyAppResourceReconciler) redisDeployment(redisName string, myAppResourc
 							},
 						},
 						VolumeMounts: []corev1.VolumeMount{
-							corev1.VolumeMount{
+							{
 								MountPath: "/var/lib/redis",
 								Name:      "data",
 							},
-							corev1.VolumeMount{
+							{
 								MountPath: "/redis-master",
 								Name:      "config",
 							},
 						},
 					}},
 					Volumes: []corev1.Volume{
-						corev1.Volume{
+						{
 							Name: "data",
 							VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{},
 							},
 						},
-						corev1.Volume{
+						{
 							Name: "config",
 							VolumeSource: corev1.VolumeSource{
 								ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -443,7 +443,7 @@ func (r *MyAppResourceReconciler) redisDeployment(redisName string, myAppResourc
 										Name: "redis-config",
 									},
 									Items: []corev1.KeyToPath{
-										corev1.KeyToPath{
+										{
 											Key:  "redis.conf",
 											Path: "redis.conf",
 										},
