@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -51,6 +52,10 @@ var _ = Describe("MyAppResource controller", func() {
 							Repository: "nginx",
 							Tag:        "1.14.2",
 						},
+						UI: myv1alpha1.UI{
+							Color:   "#dedbed",
+							Message: "Hello World!",
+						},
 					},
 				}
 
@@ -84,9 +89,15 @@ var _ = Describe("MyAppResource controller", func() {
 				}
 
 				Expect(*found.Spec.Replicas).To(Equal(int32(3)))
-				Expect(found.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal("100m"))
-				Expect(found.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String()).To(Equal("64Mi"))
-				Expect(found.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.14.2"))
+				container := found.Spec.Template.Spec.Containers[0]
+				Expect(container.Resources.Requests.Cpu().String()).To(Equal("100m"))
+				Expect(container.Resources.Limits.Memory().String()).To(Equal("64Mi"))
+				Expect(container.Image).To(Equal("nginx:1.14.2"))
+				Expect(container.Env).To(Equal([]v1.EnvVar{
+					{Name: "PODINFO_UI_COLOR", Value: "#dedbed"},
+					{Name: "PODINFO_UI_MESSAGE", Value: "Hello World!"},
+				}))
+
 				return nil
 			}, time.Minute, time.Second).Should(Succeed())
 

@@ -16,3 +16,6 @@ spec:
   image:
     repository: ghcr.io/stefanprodan/podinfo
     tag: 6.3.6
+  ui:
+    color: "#CC8844"
+    message: "Howdy!"

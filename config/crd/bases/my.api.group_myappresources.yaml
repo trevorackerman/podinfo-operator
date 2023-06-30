@@ -64,6 +64,13 @@ spec:
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
                 type: object
+              ui:
+                properties:
+                  color:
+                    type: string
+                  message:
+                    type: string
+                type: object
             type: object
           status:
             description: MyAppResourceStatus defines the observed state of MyAppResource

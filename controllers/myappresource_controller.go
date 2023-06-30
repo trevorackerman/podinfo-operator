@@ -251,6 +251,7 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(myAppResource *myv1
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
 					},
+					// Shamelessly copied from https://github.com/stefanprodan/podinfo/blob/master/kustomize/deployment.yaml
 					Containers: []corev1.Container{{
 						Image:           image,
 						Name:            "podinfo",
@@ -287,6 +288,10 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(myAppResource *myv1
 							Limits: corev1.ResourceList{
 								corev1.ResourceMemory: myAppResource.Spec.Resources.MemoryLimit,
 							},
+						},
+						Env: []corev1.EnvVar{
+							{Name: "PODINFO_UI_COLOR", Value: myAppResource.Spec.UI.Color},
+							{Name: "PODINFO_UI_MESSAGE", Value: myAppResource.Spec.UI.Message},
 						},
 					}},
 				},

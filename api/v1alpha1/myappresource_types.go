@@ -34,6 +34,11 @@ type Image struct {
 	Tag        string `json:"tag,omitempty"`
 }
 
+type UI struct {
+	Color   string `json:"color,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
 // MyAppResourceSpec defines the desired state of MyAppResource
 type MyAppResourceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -46,6 +51,7 @@ type MyAppResourceSpec struct {
 	ReplicaCount int32     `json:"replicaCount,omitempty"`
 	Resources    Resources `json:"resources,omitempty"`
 	Image        Image     `json:"image,omitempty"`
+	UI           UI        `json:"ui,omitempty"`
 }
 
 // MyAppResourceStatus defines the observed state of MyAppResource
