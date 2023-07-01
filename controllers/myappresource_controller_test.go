@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -15,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -93,6 +91,11 @@ var _ = Describe("MyAppResource controller", func() {
 				}
 
 				Expect(*found.Spec.Replicas).To(Equal(int32(3)))
+				ownerReference := found.ObjectMeta.OwnerReferences[0]
+				Expect(ownerReference.APIVersion).To(Equal("my.api.group/v1alpha1"))
+				Expect(ownerReference.Kind).To(Equal("MyAppResource"))
+				Expect(ownerReference.Name).To(Equal(MyAppResourceName))
+
 				container := found.Spec.Template.Spec.Containers[0]
 				Expect(container.Resources.Requests.Cpu().String()).To(Equal("100m"))
 				Expect(container.Resources.Limits.Memory().String()).To(Equal("64Mi"))
@@ -102,23 +105,35 @@ var _ = Describe("MyAppResource controller", func() {
 					{Name: "PODINFO_UI_MESSAGE", Value: "Hello World!"},
 				}))
 
-				deployments := appsv1.DeploymentList{}
-				err = k8sClient.List(ctx, &deployments, &client.ListOptions{Namespace: "default"})
+				foundRedisConfig := &v1.ConfigMap{}
+				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: fmt.Sprintf("%s-redis", MyAppResourceName)}, foundRedisConfig)
 				if err != nil {
-					fmt.Fprintln(os.Stderr, "Can't list deployments", err)
+					return err
 				}
 
-				fmt.Println("deployments", len(deployments.Items))
-				for i := 0; i < len(deployments.Items); i++ {
-					d := deployments.Items[i]
-					fmt.Printf("Found deployment '%s' in namepsace default\n", d.Name)
-				}
+				Expect(foundRedisConfig.Data).To(Equal(map[string]string{
+					"redis.conf": `maxmemory 64mb
+maxmemory-policy allkeys-lru
+save ""
+appendonly no`,
+				}))
+
+				Expect(len(foundRedisConfig.OwnerReferences)).To(Equal(1))
+				ownerReference = foundRedisConfig.ObjectMeta.OwnerReferences[0]
+				Expect(ownerReference.APIVersion).To(Equal("my.api.group/v1alpha1"))
+				Expect(ownerReference.Kind).To(Equal("MyAppResource"))
+				Expect(ownerReference.Name).To(Equal(MyAppResourceName))
 
 				foundRedis := &appsv1.Deployment{}
 				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: fmt.Sprintf("%s-redis", MyAppResourceName)}, foundRedis)
 				if err != nil {
 					return err
 				}
+
+				ownerReference = foundRedis.ObjectMeta.OwnerReferences[0]
+				Expect(ownerReference.APIVersion).To(Equal("my.api.group/v1alpha1"))
+				Expect(ownerReference.Kind).To(Equal("MyAppResource"))
+				Expect(ownerReference.Name).To(Equal(MyAppResourceName))
 
 				redisContainer := foundRedis.Spec.Template.Spec.Containers[0]
 				Expect(redisContainer.Image).To(Equal("redis:7.0.7"))

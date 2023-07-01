@@ -61,6 +61,7 @@ type MyAppResourceReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
@@ -217,6 +218,39 @@ func (r *MyAppResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if myAppResource.Spec.Redis.Enabled {
 		redisName := fmt.Sprintf("%s-redis", myAppResource.Name)
+
+		foundConfig := &corev1.ConfigMap{}
+		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, foundConfig)
+		if err != nil && apierrors.IsNotFound(err) {
+			redisConfig := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      redisName,
+					Namespace: myAppResource.Namespace,
+				},
+				Data: map[string]string{
+					"redis.conf": `maxmemory 64mb
+maxmemory-policy allkeys-lru
+save ""
+appendonly no`,
+				},
+			}
+
+			if err := ctrl.SetControllerReference(myAppResource, redisConfig, r.Scheme); err != nil {
+				log.Error(err, "Failed to set owner reference Redis ConfigMap", "ConfigMap.Name", redisConfig.Name)
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Creating Redis ConfigMap", "ConfigMap.Name", redisConfig.Name)
+			if err = r.Create(ctx, redisConfig); err != nil {
+				log.Error(err, "Failed to create new Redis ConfigMap", "ConfigMap.Name", redisConfig.Name)
+				return ctrl.Result{}, err
+			}
+		} else if err != nil {
+			log.Error(err, "Failed to get ConfigMap")
+			// Let's return the error for the reconciliation be re-trigged again
+			return ctrl.Result{}, err
+		}
+
 		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, found)
 
 		if err != nil && apierrors.IsNotFound(err) {
@@ -381,6 +415,16 @@ func (r *MyAppResourceReconciler) redisDeployment(redisName string, myAppResourc
 						Name:            "redis",
 						ImagePullPolicy: corev1.PullIfNotPresent,
 						Command:         []string{"redis-server", "/redis-master/redis.conf"},
+						SecurityContext: &corev1.SecurityContext{
+							RunAsNonRoot:             &[]bool{true}[0],
+							RunAsUser:                &[]int64{1001}[0],
+							AllowPrivilegeEscalation: &[]bool{false}[0],
+							Capabilities: &corev1.Capabilities{
+								Drop: []corev1.Capability{
+									"ALL",
+								},
+							},
+						},
 						Ports: []corev1.ContainerPort{
 							{
 								ContainerPort: 6379,
@@ -440,7 +484,7 @@ func (r *MyAppResourceReconciler) redisDeployment(redisName string, myAppResourc
 							VolumeSource: corev1.VolumeSource{
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
-										Name: "redis-config",
+										Name: redisName,
 									},
 									Items: []corev1.KeyToPath{
 										{
