@@ -42,7 +42,7 @@ spec:
                   tag:
                     type: string
                 type: object
-              redis:omitempty:
+              redis:
                 properties:
                   enabled:
                     type: boolean
@@ -76,8 +76,6 @@ spec:
                   message:
                     type: string
                 type: object
-            required:
-            - redis:omitempty
             type: object
           status:
             description: MyAppResourceStatus defines the observed state of MyAppResource

@@ -19,5 +19,5 @@ spec:
   ui:
     color: "#CC8844"
     message: "Howdy!"
-  # redis:
-  #   enabled: true
+  redis:
+    enabled: true

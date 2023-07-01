@@ -56,7 +56,7 @@ type MyAppResourceSpec struct {
 	Resources    Resources `json:"resources,omitempty"`
 	Image        Image     `json:"image,omitempty"`
 	UI           UI        `json:"ui,omitempty"`
-	Redis        Redis     `json:"redis:omitempty"`
+	Redis        Redis     `json:"redis,omitempty"`
 }
 
 // MyAppResourceStatus defines the observed state of MyAppResource
