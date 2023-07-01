@@ -138,6 +138,14 @@ appendonly no`,
 				redisContainer := foundRedis.Spec.Template.Spec.Containers[0]
 				Expect(redisContainer.Image).To(Equal("redis:7.0.7"))
 
+				foundRedisService := &v1.Service{}
+				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: fmt.Sprintf("%s-redis", MyAppResourceName)}, foundRedisService)
+				if err != nil {
+					return err
+				}
+
+				Expect(foundRedisService.Spec.Type).To(Equal(v1.ServiceTypeClusterIP))
+				Expect(foundRedisService.Spec.Ports[0].Port).To(Equal(int32(6379)))
 				return nil
 			}, time.Minute, time.Second).Should(Succeed())
 

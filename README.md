@@ -127,6 +127,7 @@ minikube image ls
 
 ```
 export KUBEBUILDER_ASSETS=$(pwd)/bin/k8s/1.26.0-linux-amd64
+go test ./controllers/... -v -ginkgo.v
 ```
 
 

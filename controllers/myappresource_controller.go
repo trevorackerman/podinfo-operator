@@ -62,6 +62,7 @@ type MyAppResourceReconciler struct {
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 //+kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
@@ -222,6 +223,7 @@ func (r *MyAppResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		foundConfig := &corev1.ConfigMap{}
 		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, foundConfig)
 		if err != nil && apierrors.IsNotFound(err) {
+			// Shamelessly copied from https://github.com/stefanprodan/podinfo/blob/master/charts/podinfo/templates/redis/config.yaml
 			redisConfig := &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      redisName,
@@ -286,6 +288,50 @@ appendonly no`,
 
 		} else if err != nil {
 			log.Error(err, "Failed to get Deployment")
+			// Let's return the error for the reconciliation be re-trigged again
+			return ctrl.Result{}, err
+		}
+
+		foundService := &corev1.Service{}
+
+		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, foundService)
+		if err != nil && apierrors.IsNotFound(err) {
+			labels := labelsForMyAppResource(myAppResource.Name)
+			labels["app"] = redisName
+
+			// Shamelessly copied from https://github.com/stefanprodan/podinfo/blob/master/charts/podinfo/templates/redis/service.yaml
+			redisService := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      redisName,
+					Namespace: myAppResource.Namespace,
+					Labels:    labels,
+				},
+				Spec: corev1.ServiceSpec{
+					Type:     corev1.ServiceTypeClusterIP,
+					Selector: labels,
+					Ports: []corev1.ServicePort{
+						{
+							Name:       "redis",
+							Port:       6379,
+							Protocol:   corev1.ProtocolTCP,
+							TargetPort: intstr.IntOrString{IntVal: 6379},
+						},
+					},
+				},
+			}
+
+			if err := ctrl.SetControllerReference(myAppResource, redisService, r.Scheme); err != nil {
+				log.Error(err, "Failed to set owner reference Redis Service", "Service.Name", redisService.Name)
+				return ctrl.Result{}, err
+			}
+
+			log.Info("Creating Redis Service", "Service.Name", redisService.Name)
+			if err = r.Create(ctx, redisService); err != nil {
+				log.Error(err, "Failed to create new Redis Service", "Service.Name", redisService.Name)
+				return ctrl.Result{}, err
+			}
+		} else if err != nil {
+			log.Error(err, "Failed to get Service")
 			// Let's return the error for the reconciliation be re-trigged again
 			return ctrl.Result{}, err
 		}
@@ -388,6 +434,7 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(podinfoName string,
 
 func (r *MyAppResourceReconciler) redisDeployment(redisName string, myAppResource *myv1alpha1.MyAppResource) (*appsv1.Deployment, error) {
 	ls := labelsForMyAppResource(myAppResource.Name)
+	ls["app"] = redisName
 
 	// Shamelessly copied from https://github.com/stefanprodan/podinfo/blob/dd3869b1a177432b60ea1e3ba99c10fc9db850fa/deploy/bases/cache/deployment.yaml
 	dep := &appsv1.Deployment{
