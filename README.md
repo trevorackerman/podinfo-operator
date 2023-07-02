@@ -130,6 +130,17 @@ export KUBEBUILDER_ASSETS=$(pwd)/bin/k8s/1.26.0-linux-amd64
 go test ./controllers/... -v -ginkgo.v
 ```
 
+## Access Podinfo through port forward
+
+See https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/ for more details
+The http port will be 9898, this can be verified by running the following command and examining the port named "http"
+```
+kubectl get deployments myappresource-sample-podinfo -o json
+```
+
+```
+kubectl port-forward deployments/myappresource-sample-podinfo :9898
+```
 
 ## Creating MyAppResource custom resources
 

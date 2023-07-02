@@ -355,6 +355,12 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(podinfoName string,
 		return nil, err
 	}
 
+	command := []string{"./podinfo", "--port=9898", "--port-metrics=9797", "--grpc-port=9999", "--grpc-service-name=podinfo", "--level=info", "--random-delay=false", "--random-error=false"}
+
+	if myAppResource.Spec.Redis.Enabled {
+		command = append(command, fmt.Sprintf("--cache-server=tcp://%s-redis:6379", myAppResource.Name))
+	}
+
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podinfoName,
@@ -405,7 +411,7 @@ func (r *MyAppResourceReconciler) deploymentForMyAppResource(podinfoName string,
 								Name:          "grpc",
 							},
 						},
-						Command: []string{"./podinfo", "--port=9898", "--port-metrics=9797", "--grpc-port=9999", "--grpc-service-name=podinfo", "--level=info", "--random-delay=false", "--random-error=false"},
+						Command: command,
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceCPU: myAppResource.Spec.Resources.CpuRequest,

@@ -85,6 +85,7 @@ var _ = Describe("MyAppResource controller", func() {
 			Eventually(func() error {
 				found := &appsv1.Deployment{}
 				podinfoName := fmt.Sprintf("%s-podinfo", MyAppResourceName)
+				redisName := fmt.Sprintf("%s-redis", MyAppResourceName)
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: podinfoName, Namespace: "default"}, found)
 				if err != nil {
 					return err
@@ -103,6 +104,17 @@ var _ = Describe("MyAppResource controller", func() {
 				Expect(container.Env).To(Equal([]v1.EnvVar{
 					{Name: "PODINFO_UI_COLOR", Value: "#dedbed"},
 					{Name: "PODINFO_UI_MESSAGE", Value: "Hello World!"},
+				}))
+				Expect(container.Command).To(Equal([]string{
+					"./podinfo",
+					"--port=9898",
+					"--port-metrics=9797",
+					"--grpc-port=9999",
+					"--grpc-service-name=podinfo",
+					"--level=info",
+					"--random-delay=false",
+					"--random-error=false",
+					fmt.Sprintf("--cache-server=tcp://%s:6379", redisName),
 				}))
 
 				foundRedisConfig := &v1.ConfigMap{}
@@ -125,7 +137,7 @@ appendonly no`,
 				Expect(ownerReference.Name).To(Equal(MyAppResourceName))
 
 				foundRedis := &appsv1.Deployment{}
-				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: fmt.Sprintf("%s-redis", MyAppResourceName)}, foundRedis)
+				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: "default", Name: redisName}, foundRedis)
 				if err != nil {
 					return err
 				}
