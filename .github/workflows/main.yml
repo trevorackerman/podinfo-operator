@@ -9,7 +9,7 @@ jobs:
     - name: Start minikube
       uses: medyagh/setup-minikube@master
     - name: Check Cluster
-      run: kubect get pods -A
+      run: kubectl get pods -A
     - name: Set up Go
       uses: actions/setup-go@v3
       with:
