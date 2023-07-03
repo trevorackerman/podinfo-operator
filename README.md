@@ -1,8 +1,5 @@
 # podinfo
-// TODO(user): Add simple overview of use/purpose
-
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+Launches Podinfo deployment with optional Redis Service as a single custom resource
 
 ## Getting Started
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
@@ -12,19 +9,23 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
 1. Install Instances of Custom Resources:
 
 ```sh
-kubectl apply -f config/samples/
+kubectl apply -f config/samples/my_v1alpha1_myappresource.yaml
 ```
 
 2. Build and push your image to the location specified by `IMG`:
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/podinfo:tag
+make docker-build docker-push
+```
+  1. With Minikube
+```sh
+make docker-build
 ```
 
 3. Deploy the controller to the cluster with the image specified by `IMG`:
 
 ```sh
-make deploy IMG=<some-registry>/podinfo:tag
+make deploy
 ```
 
 ### Uninstall CRDs
@@ -41,29 +42,11 @@ UnDeploy the controller from the cluster:
 make undeploy
 ```
 
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
 ### How it works
 This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
 
 It uses [Controllers](https://kubernetes.io/docs/concepts/architecture/controller/),
 which provide a reconcile function responsible for synchronizing resources until the desired state is reached on the cluster.
-
-### Test It Out
-1. Install the CRDs into the cluster:
-
-```sh
-make install
-```
-
-2. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
-
-```sh
-make run
-```
-
-**NOTE:** You can also run this in one step by running: `make install run`
 
 ### Modifying the API definitions
 If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
@@ -95,22 +78,20 @@ limitations under the License.
 # Development Notes
 
 This project was bootstrapped with the command
-```
+```sh
 operator-sdk init --domain api.group --project-name=podinfo --repo github.com/trevorackerman/podinfo-operator
 ```
 See https://sdk.operatorframework.io/docs/building-operators/golang/tutorial/#create-a-new-project
 
 Creating the MyAppResource API
+```sh
+operator-sdk create api --group my --version v1alpha1 --kind MyAppResource --resource --controller
 ```
-operator-sdk ....
-```
-
-
 ## Working with Minikube
 
 Every time you start a new terminal run
 
-```
+```sh
 eval $(minikube docker-env)
 ```
 
@@ -119,13 +100,13 @@ See https://minikube.sigs.k8s.io/docs/handbook/pushing/#1-pushing-directly-to-th
 
 You can check if you've correctly pushed to minikube via
 
-```
+```sh
 minikube image ls
 ```
 
 ### Running tests with minikube
 
-```
+```sh
 export KUBEBUILDER_ASSETS=$(pwd)/bin/k8s/1.26.0-linux-amd64
 go test ./controllers/... -v -ginkgo.v
 ```
@@ -134,32 +115,28 @@ go test ./controllers/... -v -ginkgo.v
 
 See https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/ for more details
 The http port will be 9898, this can be verified by running the following command and examining the port named "http"
-```
-kubectl get deployments myappresource-sample-podinfo -o json
-```
-
-```
+```sh
 kubectl port-forward deployments/myappresource-sample-podinfo :9898
 ```
 
 ## Creating MyAppResource custom resources
-
-You may use the sample file from config/sample/blah.yaml
-
-```
+```sh
 kubectl apply -f config/samples/my_v1alpha1_myappresource.yaml   
 ```
 
-After this a pod should be created in the default kube namespace
+This should create the following resources
+1. A Podinfo Deployment with 2 pods
+2. A ConfigMap for Redis
+3. A Redis deployment with 1 pod
+4. A Redis Service
 
-And you should be able to run busybox in another pod to manually test the podinfo service
-```
+And you should be able to run busybox in another pod to manually test the podinfo deployment if you don't want to do kube port-forward
+```sh
 kubectl run -i --tty busybox --image=busybox:1.28 -- sh
 / # wget -O- myappresource-sample-podinfo:9898
 ```
 
 And see something similar to
-
 ```
 Connecting to myappresource-sample-podinfo:9898 (10.111.249.179:9898)
 {
@@ -176,6 +153,10 @@ Connecting to myappresource-sample-podinfo:9898 (10.111.249.179:9898)
   "num_cpu": "8"
 -                    100% |*******************************************************************************************************************************************************************|   413   0:00:00 ETA
 / #
-
 ```
 
+# Further Work
+1. Fill out CRD with meaningful status during reconciliation
+1. Record Events during reconciliation, e.g. started deployments, created configmaps...
+1. Integrate with Grafana for resource monitoring
+1. Reduce code duplication
