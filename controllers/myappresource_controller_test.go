@@ -12,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -21,13 +22,101 @@ import (
 var _ = Describe("MyAppResource controller", func() {
 	Context("MyAppResource controller test", func() {
 		const MyAppResourceName = "myappresource-sample"
-
 		ctx := context.Background()
-
 		typeNamespaceName := types.NamespacedName{Name: MyAppResourceName, Namespace: "default"}
 
-		// TODO - negative testing of replica count
-		// TODO - test of scaling replica count
+		It("Rejects bad replica count", func() {
+			myAppResource := myv1alpha1.MyAppResource{
+				Spec: myv1alpha1.MyAppResourceSpec{
+					ReplicaCount: 4,
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "whoops",
+					Namespace: "default",
+				},
+			}
+
+			err := k8sClient.Create(ctx, &myAppResource)
+			Expect(errors.IsInvalid(err)).To(BeTrue())
+			x, ok := errors.StatusCause(err, metav1.CauseTypeFieldValueInvalid)
+			Expect(ok).To(BeTrue())
+			Expect(x.Field).To(Equal("spec.replicaCount"))
+		})
+
+		It("rejects non-hex encoded ui color", func() {
+			myAppResource := myv1alpha1.MyAppResource{
+				Spec: myv1alpha1.MyAppResourceSpec{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "whoops",
+					Namespace: "default",
+				},
+			}
+
+			badcolors := []string{
+				"This is not a color",
+				"#abc12",
+				"abc123",
+				"abc1234",
+			}
+
+			for _, badcolor := range badcolors {
+				By(fmt.Sprintf("Rejecting bad color '%s'", badcolor))
+				myAppResource.Spec.UI.Color = badcolor
+				err := k8sClient.Create(ctx, &myAppResource)
+				Expect(errors.IsInvalid(err)).To(BeTrue())
+				x, ok := errors.StatusCause(err, metav1.CauseTypeFieldValueInvalid)
+				Expect(ok).To(BeTrue())
+				Expect(x.Field).To(Equal("spec.ui.color"))
+			}
+		})
+
+		It("Uses defaults", func() {
+			myAppResource := myv1alpha1.MyAppResource{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "usedefaults",
+					Namespace: "default",
+				},
+			}
+
+			By("Passing in empty resource")
+			err := k8sClient.Create(ctx, &myAppResource)
+			Expect(err).To(BeNil())
+
+			By("Checking if the resource was created")
+			defaultsName := types.NamespacedName{Name: "usedefaults", Namespace: "default"}
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, defaultsName, &myv1alpha1.MyAppResource{})
+			}, time.Minute, time.Second).Should(Succeed())
+
+			By("Reconciling the resource")
+			myAppResourceReconciler := &MyAppResourceReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err = myAppResourceReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: defaultsName,
+			})
+			Expect(err).To(Not(HaveOccurred()))
+
+			found := &appsv1.Deployment{}
+
+			By("Retrieving the reconciled resource")
+			defaultsPodinfoName := types.NamespacedName{Name: "usedefaults-podinfo", Namespace: "default"}
+
+			Eventually(func() error {
+				return k8sClient.Get(ctx, defaultsPodinfoName, found)
+			}, time.Minute, time.Second).Should(Succeed())
+
+			By("Confirming Defaults")
+			Expect(*found.Spec.Replicas).To(Equal(int32(2)))
+			container := found.Spec.Template.Spec.Containers[0]
+			Expect(container.Image).To(Equal("ghcr.io/stefanprodan/podinfo:latest"))
+			Expect(*container.Resources.Limits.Memory()).To(Equal(resource.MustParse("64Mi")))
+			Expect(*container.Resources.Requests.Cpu()).To(Equal(resource.MustParse("100m")))
+			Expect(container.Env).To(BeEmpty())
+		})
 
 		It("Successfully Reconciles", func() {
 			myAppResource := &myv1alpha1.MyAppResource{}

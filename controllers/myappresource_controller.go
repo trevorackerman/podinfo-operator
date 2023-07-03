@@ -183,7 +183,7 @@ func (r *MyAppResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if err != nil && apierrors.IsNotFound(err) {
 		// Define a new deployment
-		dep, err := r.definePodinfoDeployment(podinfoName, myAppResource)
+		dep, err := r.definePodinfoDeployment(podinfoName, myAppResource, log)
 		if err != nil {
 			return r.HandleDeploymentDefinitionError(ctx, myAppResource, err, log)
 		}
@@ -201,7 +201,7 @@ func (r *MyAppResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	} else {
 		log.Info("Checking if found deployment matches desired settings")
 		// We've found the deployment, does it need to be updated?
-		desired, err := r.definePodinfoDeployment(podinfoName, myAppResource)
+		desired, err := r.definePodinfoDeployment(podinfoName, myAppResource, log)
 		if err != nil {
 			return r.HandleDeploymentDefinitionError(ctx, myAppResource, err, log)
 		}
@@ -466,7 +466,7 @@ func commandsEqual(a []string, b []string, log logr.Logger) bool {
 }
 
 // definePodinfoDeployment returns a MyAppResource Deployment object
-func (r *MyAppResourceReconciler) definePodinfoDeployment(podinfoName string, myAppResource *myv1alpha1.MyAppResource) (*appsv1.Deployment, error) {
+func (r *MyAppResourceReconciler) definePodinfoDeployment(podinfoName string, myAppResource *myv1alpha1.MyAppResource, log logr.Logger) (*appsv1.Deployment, error) {
 	ls := labelsForMyAppResource(podinfoName)
 	replicas := myAppResource.Spec.ReplicaCount
 
@@ -480,6 +480,31 @@ func (r *MyAppResourceReconciler) definePodinfoDeployment(podinfoName string, my
 
 	if myAppResource.Spec.Redis.Enabled {
 		command = append(command, fmt.Sprintf("--cache-server=tcp://%s-redis:6379", myAppResource.Name))
+	}
+
+	log.Info("Received resources", "resources", myAppResource.Spec.Resources)
+	var cpuRequest resource.Quantity
+	if myAppResource.Spec.Resources.CpuRequest.String() == "0" {
+		cpuRequest = resource.MustParse("100m")
+	} else {
+		cpuRequest = myAppResource.Spec.Resources.CpuRequest
+	}
+
+	var memoryLimit resource.Quantity
+	if myAppResource.Spec.Resources.MemoryLimit.String() == "0" {
+		memoryLimit = resource.MustParse("64Mi")
+	} else {
+		memoryLimit = myAppResource.Spec.Resources.MemoryLimit
+	}
+
+	envVars := []corev1.EnvVar{}
+
+	if myAppResource.Spec.UI.Color != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "PODINFO_UI_COLOR", Value: myAppResource.Spec.UI.Color})
+	}
+
+	if myAppResource.Spec.UI.Message != "" {
+		envVars = append(envVars, corev1.EnvVar{Name: "PODINFO_UI_MESSAGE", Value: myAppResource.Spec.UI.Message})
 	}
 
 	dep := &appsv1.Deployment{
@@ -535,22 +560,20 @@ func (r *MyAppResourceReconciler) definePodinfoDeployment(podinfoName string, my
 						Command: command,
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceCPU: myAppResource.Spec.Resources.CpuRequest,
+								corev1.ResourceCPU: cpuRequest,
 							},
 							Limits: corev1.ResourceList{
-								corev1.ResourceMemory: myAppResource.Spec.Resources.MemoryLimit,
+								corev1.ResourceMemory: memoryLimit,
 							},
 						},
-						Env: []corev1.EnvVar{
-							{Name: "PODINFO_UI_COLOR", Value: myAppResource.Spec.UI.Color},
-							{Name: "PODINFO_UI_MESSAGE", Value: myAppResource.Spec.UI.Message},
-						},
+						Env: envVars,
 					}},
 				},
 			},
 		},
 	}
 
+	log.Info("deployment container resources", "resources", dep.Spec.Template.Spec.Containers[0].Resources)
 	// Set the ownerRef for the Deployment
 	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/
 	if err := ctrl.SetControllerReference(myAppResource, dep, r.Scheme); err != nil {

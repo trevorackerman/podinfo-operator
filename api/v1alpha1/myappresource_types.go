@@ -30,11 +30,15 @@ type Resources struct {
 }
 
 type Image struct {
+	// +kubebuilder:default="ghcr.io/stefanprodan/podinfo"
 	Repository string `json:"repository,omitempty"`
-	Tag        string `json:"tag,omitempty"`
+	// +kubebuilder:default="latest"
+	Tag string `json:"tag,omitempty"`
 }
 
 type UI struct {
+	// Unfortunately can't use [[:xdigit:]] or {6} controller-gen chokes on it.
+	// +kubebuilder:validation:Pattern=^#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$
 	Color   string `json:"color,omitempty"`
 	Message string `json:"message,omitempty"`
 }
@@ -49,6 +53,7 @@ type MyAppResourceSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// ReplicaCount controls the number of Pods allowed for the Podinfo Deployment
+	// +kubebuilder:default=2
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=3
 	// +kubebuilder:validation:ExclusiveMaximum=false

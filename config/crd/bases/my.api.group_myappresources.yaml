@@ -38,8 +38,10 @@ spec:
               image:
                 properties:
                   repository:
+                    default: ghcr.io/stefanprodan/podinfo
                     type: string
                   tag:
+                    default: latest
                     type: string
                 type: object
               redis:
@@ -48,6 +50,7 @@ spec:
                     type: boolean
                 type: object
               replicaCount:
+                default: 2
                 description: ReplicaCount controls the number of Pods allowed for
                   the Podinfo Deployment
                 format: int32
@@ -72,6 +75,9 @@ spec:
               ui:
                 properties:
                   color:
+                    description: Unfortunately can't use [[:xdigit:]] or {6} controller-gen
+                      chokes on it.
+                    pattern: ^#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$
                     type: string
                   message:
                     type: string
