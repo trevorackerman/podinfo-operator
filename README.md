@@ -117,7 +117,17 @@ See https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-acc
 The http port will be 9898, this can be verified by running the following command and examining the port named "http"
 ```sh
 kubectl port-forward deployments/myappresource-sample-podinfo :9898
+Forwarding from 127.0.0.1:45893 -> 9898
+Forwarding from [::1]:45893 -> 9898
 ```
+
+Then in another terminal on the host running kubernetes you may execute curl commands against the port chosen by kubectl
+```sh
+curl -vvv -X POST localhost:45893/cache/hello -d "world"
+curl -vvv localhost:45893/cache/hello
+```
+
+And in your browser you may access the UI at locahost:45893
 
 ## Creating MyAppResource custom resources
 ```sh
@@ -130,7 +140,7 @@ This should create the following resources
 3. A Redis deployment with 1 pod
 4. A Redis Service
 
-And you should be able to run busybox in another pod to manually test the podinfo deployment if you don't want to do kube port-forward
+And you should be able to run busybox in another pod to manually test the podinfo deployment is running if you don't want to do kube port-forward
 ```sh
 kubectl run -i --tty busybox --image=busybox:1.28 -- sh
 / # wget -O- myappresource-sample-podinfo:9898
