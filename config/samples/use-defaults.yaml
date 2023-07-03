@@ -9,4 +9,3 @@ metadata:
     app.kubernetes.io/created-by: podinfo
   name: myappresource-sample
 spec:
-  replicaCount: 2
