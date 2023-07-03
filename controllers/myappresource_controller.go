@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/go-logr/logr"
 	myv1alpha1 "github.com/trevorackerman/podinfo-operator/api/v1alpha1"
 )
 
@@ -182,27 +183,9 @@ func (r *MyAppResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if err != nil && apierrors.IsNotFound(err) {
 		// Define a new deployment
-		dep, err := r.deploymentForMyAppResource(podinfoName, myAppResource)
+		dep, err := r.definePodinfoDeployment(podinfoName, myAppResource)
 		if err != nil {
-			log.Error(err, "Failed to define new Deployment resource for MyAppResource")
-
-			// The following implementation will update the status
-			meta.SetStatusCondition(
-				&myAppResource.Status.Conditions,
-				metav1.Condition{
-					Type:    typeAvailableMyAppResource,
-					Status:  metav1.ConditionFalse,
-					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", myAppResource.Name, err),
-				},
-			)
-
-			if err := r.Status().Update(ctx, myAppResource); err != nil {
-				log.Error(err, "Failed to update MyAppResource status")
-				return ctrl.Result{}, err
-			}
-
-			return ctrl.Result{}, err
+			return r.HandleDeploymentDefinitionError(ctx, myAppResource, err, log)
 		}
 
 		log.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
@@ -215,11 +198,40 @@ func (r *MyAppResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		log.Error(err, "Failed to get Deployment")
 		// Let's return the error for the reconciliation be re-trigged again
 		return ctrl.Result{}, err
+	} else {
+		log.Info("Checking if found deployment matches desired settings")
+		// We've found the deployment, does it need to be updated?
+		desired, err := r.definePodinfoDeployment(podinfoName, myAppResource)
+		if err != nil {
+			return r.HandleDeploymentDefinitionError(ctx, myAppResource, err, log)
+		}
+
+		if !podinfoDeploymentsEqual(found, desired, log) {
+			log.Info("Current podinfo deployment does not match desired state")
+			if err = r.Update(ctx, desired); err != nil {
+				log.Error(err, "Failed updating Podinfo Deployment", "Namespace", found.Namespace, "Name", found.Name)
+				if err := r.Get(ctx, req.NamespacedName, myAppResource); err != nil {
+					log.Error(err, "Failed to re-fetch MyAppResource")
+					return ctrl.Result{}, err
+				}
+
+				// The following implementation will update the status
+				meta.SetStatusCondition(&myAppResource.Status.Conditions, metav1.Condition{Type: typeAvailableMyAppResource,
+					Status: metav1.ConditionFalse, Reason: "Resizing",
+					Message: fmt.Sprintf("Failed to update the size for the custom resource (%s): (%s)", myAppResource.Name, err)})
+
+				if err := r.Status().Update(ctx, myAppResource); err != nil {
+					log.Error(err, "Failed to update MyAppResource status")
+					return ctrl.Result{}, err
+				}
+
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
+	redisName := fmt.Sprintf("%s-redis", myAppResource.Name)
 	if myAppResource.Spec.Redis.Enabled {
-		redisName := fmt.Sprintf("%s-redis", myAppResource.Name)
-
 		foundConfig := &corev1.ConfigMap{}
 		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, foundConfig)
 		if err != nil && apierrors.IsNotFound(err) {
@@ -335,17 +347,126 @@ appendonly no`,
 			// Let's return the error for the reconciliation be re-trigged again
 			return ctrl.Result{}, err
 		}
+	} else {
+		foundService := &corev1.Service{}
+		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, foundService)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		} else if err == nil {
+			r.Delete(ctx, foundService)
+		}
+
+		foundDeployment := &appsv1.Deployment{}
+		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, foundDeployment)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		} else if err == nil {
+			r.Delete(ctx, foundDeployment)
+		}
+
+		foundConfig := &corev1.ConfigMap{}
+		err = r.Get(ctx, types.NamespacedName{Name: redisName, Namespace: myAppResource.Namespace}, foundConfig)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		} else if err == nil {
+			r.Delete(ctx, foundConfig)
+		}
 	}
 
 	return ctrl.Result{RequeueAfter: time.Minute}, nil
 }
 
 func (r *MyAppResourceReconciler) doFinalizerOperationsForMyAppResource(cr *myv1alpha1.MyAppResource) {
+	if r.Recorder == nil {
+		return
+	}
+
 	r.Recorder.Event(cr, "Warning", "Deleting", fmt.Sprintf("Custom Resource %s is being deleted from the namespace %s", cr.Name, cr.Namespace))
 }
 
-// deploymentForMyAppResource returns a MyAppResource Deployment object
-func (r *MyAppResourceReconciler) deploymentForMyAppResource(podinfoName string, myAppResource *myv1alpha1.MyAppResource) (*appsv1.Deployment, error) {
+func podinfoDeploymentsEqual(a *appsv1.Deployment, b *appsv1.Deployment, log logr.Logger) bool {
+	if *a.Spec.Replicas != *b.Spec.Replicas {
+		log.Info("mismatched replicas", "a", a.Spec.Replicas, "b", b.Spec.Replicas)
+		return false
+	}
+
+	// Leveraging the fact we only create a single container in the pod
+	aContainer := a.Spec.Template.Spec.Containers[0]
+	bContainer := b.Spec.Template.Spec.Containers[0]
+
+	if aContainer.Image != bContainer.Image {
+		log.Info("Mismatched images", "a", aContainer.Image, "b", bContainer.Image)
+		return false
+	}
+
+	return envsEqual(aContainer.Env, bContainer.Env, log) &&
+		resourcesEqual(aContainer.Resources, bContainer.Resources, log) &&
+		commandsEqual(aContainer.Command, bContainer.Command, log)
+}
+
+func envsEqual(a []corev1.EnvVar, b []corev1.EnvVar, log logr.Logger) bool {
+	if len(a) != len(b) {
+		log.Info("different length envs", "a", len(a), "b", len(b))
+		return false
+	}
+
+	m := make(map[string]string)
+
+	for _, item := range a {
+		m[item.Name] = item.Value
+	}
+
+	for _, item := range b {
+		val, ok := m[item.Name]
+		if ok && val == item.Value {
+			delete(m, item.Name)
+		} else if !ok {
+			m[item.Name] = item.Value
+		}
+	}
+
+	if len(m) != 0 {
+		for key, val := range m {
+			log.Info("Found mismatched env var", "key", key, "value", val)
+		}
+		return false
+	}
+	return true
+}
+
+func resourcesEqual(a corev1.ResourceRequirements, b corev1.ResourceRequirements, log logr.Logger) bool {
+	if !a.Limits.Memory().Equal(*b.Limits.Memory()) {
+		log.Info("Mismatched memory limits", "a", a.Limits.Memory(), "b", b.Limits.Memory())
+		return false
+	}
+
+	if !a.Requests.Cpu().Equal(*b.Requests.Cpu()) {
+		log.Info("Mismatched CPU requests", "a", a.Requests.Cpu(), "b", b.Requests.Cpu())
+		return false
+	}
+
+	return true
+}
+
+func commandsEqual(a []string, b []string, log logr.Logger) bool {
+	if len(a) != len(b) {
+		log.Info("Mismatched commands (len)", "a", len(a), "b", len(b))
+		return false
+	}
+
+	ok := true
+	for i, item := range a {
+		if b[i] != item {
+			ok = false
+			log.Info("Found mismatched string in command", "index", i, "a", a[i], "b", b[i])
+		}
+	}
+
+	return ok
+}
+
+// definePodinfoDeployment returns a MyAppResource Deployment object
+func (r *MyAppResourceReconciler) definePodinfoDeployment(podinfoName string, myAppResource *myv1alpha1.MyAppResource) (*appsv1.Deployment, error) {
 	ls := labelsForMyAppResource(podinfoName)
 	replicas := myAppResource.Spec.ReplicaCount
 
@@ -442,7 +563,7 @@ func (r *MyAppResourceReconciler) redisDeployment(redisName string, myAppResourc
 	ls := labelsForMyAppResource(myAppResource.Name)
 	ls["app"] = redisName
 
-	// Shamelessly copied from https://github.com/stefanprodan/podinfo/blob/dd3869b1a177432b60ea1e3ba99c10fc9db850fa/deploy/bases/cache/deployment.yaml
+	// Shamelessly copied from https://github.com/stefanprodan/podinfo/blob/master/deploy/bases/cache/deployment.yaml
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      redisName,
@@ -583,4 +704,26 @@ func (r *MyAppResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&myv1alpha1.MyAppResource{}).
 		Owns(&appsv1.Deployment{}).
 		Complete(r)
+}
+
+func (r *MyAppResourceReconciler) HandleDeploymentDefinitionError(ctx context.Context, myAppResource *myv1alpha1.MyAppResource, err error, log logr.Logger) (ctrl.Result, error) {
+	log.Error(err, "Failed to define new Deployment resource for MyAppResource")
+
+	// The following implementation will update the status
+	meta.SetStatusCondition(
+		&myAppResource.Status.Conditions,
+		metav1.Condition{
+			Type:    typeAvailableMyAppResource,
+			Status:  metav1.ConditionFalse,
+			Reason:  "Reconciling",
+			Message: fmt.Sprintf("Failed to create Deployment for the custom resource (%s): (%s)", myAppResource.Name, err),
+		},
+	)
+
+	if err := r.Status().Update(ctx, myAppResource); err != nil {
+		log.Error(err, "Failed to update MyAppResource status")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, err
 }
